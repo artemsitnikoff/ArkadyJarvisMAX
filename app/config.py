@@ -17,9 +17,10 @@ class Settings(BaseSettings):
     bitrix_client_secret: SecretStr = SecretStr("")
     bitrix_domain: str = ""
     bitrix_refresh_token: str = ""
-    # Custom Bitrix field holding the MAX username (@handle).
-    # Fallback to Telegram field if you reuse the same CRM record.
-    bitrix_max_field: str = "UF_USR_1678964886664"
+    # Custom Bitrix field holding the MAX/Telegram username (@handle).
+    # Name kept as `bitrix_telegram_field` so that the same .env file can
+    # be shared with ArkadyJarvis (same Bitrix portal, same UF_USR).
+    bitrix_telegram_field: str = "UF_USR_1678964886664"
     bitrix_email_guests_scan_max: int = 2000
     bitrix_email_guests_multiplier: int = 3
 
@@ -91,7 +92,13 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid IANA timezone: {v}")
         return v
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        # Tolerate unknown keys in .env — lets us share the same .env with
+        # ArkadyJarvis / ArkadyConcierge without splitting configs.
+        "extra": "ignore",
+    }
 
 
 settings = Settings()

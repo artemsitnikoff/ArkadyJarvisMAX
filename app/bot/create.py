@@ -1,16 +1,27 @@
 from maxapi import Bot, Dispatcher
+from maxapi.client.default import DefaultConnectionProperties
 from maxapi.enums.parse_mode import ParseMode
 
 from app.config import settings
 
 
 def create_bot() -> Bot:
-    # `parse_mode=` is the public kwarg name on maxapi 0.9.4; newer versions
-    # renamed it to `format`. We set HTML so that all send_message calls default
-    # to interpreting <b>/<i>/<a> tags in our handlers.
+    """Create a MAX bot with an explicit Authorization header.
+
+    maxapi 0.9.4 defaults to passing the token via the `?access_token=…`
+    query-string. MAX Bot API now requires the `Authorization: <token>`
+    header and returns 401 for query-string auth. We inject a default
+    header into the aiohttp session via DefaultConnectionProperties —
+    the query-param keeps going too but the header is what MAX reads.
+    """
+    token = settings.bot_token.get_secret_value()
+    default_connection = DefaultConnectionProperties(
+        headers={"Authorization": token},
+    )
     return Bot(
-        token=settings.bot_token.get_secret_value(),
+        token=token,
         parse_mode=ParseMode.HTML,
+        default_connection=default_connection,
     )
 
 

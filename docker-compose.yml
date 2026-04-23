@@ -2,10 +2,14 @@ services:
   bot:
     build: .
     ports:
-      - "8002:8002"
+      - "8004:8002"
     env_file:
       - .env
     volumes:
+      # ./data can be a symlink to a shared token dir (e.g. Jarvis's) —
+      # Docker follows symlinks on the host side before mounting, so
+      # pointing ./data at `/var/www/ArkadyJarvis/data` shares the
+      # single-use Claude OAuth refresh chain across both bots.
       - ./data:/app/data
       - ./.env:/app/.env:ro
     restart: unless-stopped

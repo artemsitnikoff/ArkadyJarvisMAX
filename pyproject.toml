@@ -1,0 +1,30 @@
+[project]
+name = "arkadyjarvismax"
+version = "0.1.0"
+description = "Multi-user MAX messenger bot for chat summarization, Bitrix24/Jira integration, AI assistants"
+requires-python = ">=3.11"
+dependencies = [
+    "maxapi>=0.9.4,<1",
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "aiosqlite>=0.20,<1",
+    "httpx>=0.28,<1",
+    "apscheduler>=3.10,<4",
+    "pydantic-settings>=2.7,<3",
+    "Pillow>=10,<12",
+    "pypdf>=6,<7",
+    "python-docx>=1,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "pytest-asyncio>=0.24,<1",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

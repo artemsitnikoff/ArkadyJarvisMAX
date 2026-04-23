@@ -1,0 +1,123 @@
+import logging
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from app.config import settings
+
+logger = logging.getLogger("arkadyjarvismax")
+
+
+class _BitrixCalendarMixin:
+    """Calendar-related Bitrix24 methods."""
+
+    async def get_users_accessibility(
+        self, user_ids: list[int], date_from: str, date_to: str
+    ) -> dict:
+        result = await self._request("calendar.accessibility.get", {
+            "users": user_ids,
+            "from": date_from,
+            "to": date_to,
+        })
+        return result.get("result", {})
+
+    async def create_meeting(
+        self,
+        title: str,
+        date: datetime,
+        owner_user_id: int,
+        description: str = "",
+        duration_minutes: int = 60,
+        attendee_ids: list[int] | None = None,
+    ) -> dict:
+        date_from = date.strftime("%d.%m.%Y %H:%M:%S")
+        date_to = (date + timedelta(minutes=duration_minutes)).strftime("%d.%m.%Y %H:%M:%S")
+
+        event_params = {
+            "type": "user",
+            "ownerId": owner_user_id,
+            "name": title,
+            "description": description,
+            "from": date_from,
+            "to": date_to,
+            "timezone_from": settings.timezone,
+            "timezone_to": settings.timezone,
+        }
+
+        if attendee_ids:
+            all_ids = [owner_user_id] + [aid for aid in attendee_ids if aid != owner_user_id]
+            event_params.update({
+                "is_meeting": "Y",
+                "host": owner_user_id,
+                "attendees": all_ids,
+                "meeting": {
+                    "notify": True,
+                    "open": False,
+                    "reinvite": False,
+                },
+            })
+
+        result = await self._request("calendar.event.add", event_params)
+        event_id = result.get("result")
+        logger.info(
+            "Bitrix calendar event created: id=%s title=%s date=%s attendees=%s",
+            event_id, title, date_from, attendee_ids,
+        )
+        return {"status": "ok", "id": event_id, "user_id": owner_user_id}
+
+    async def get_user_events(self, user_id: int) -> list[dict]:
+        """Fetch user's calendar events for today."""
+        now = datetime.now(ZoneInfo(settings.timezone))
+        date_from = now.strftime("%d.%m.%Y")
+        date_to = now.strftime("%d.%m.%Y")
+
+        result = await self._request("calendar.event.get", {
+            "type": "user",
+            "ownerId": user_id,
+            "from": date_from,
+            "to": date_to,
+        })
+        events = result.get("result", [])
+        logger.info("get_user_events: user=%s got %d raw events", user_id, len(events))
+
+        # Filter: only today's events, not deleted, not declined, not cancelled
+        today_str = now.strftime("%d.%m.%Y")
+        filtered = []
+        for ev in events:
+            ev_id = ev.get("ID")
+            ev_name = ev.get("NAME", "")
+            meeting_status = (ev.get("MEETING_STATUS") or "").upper()
+            status = (ev.get("STATUS") or "").upper()
+            accessibility = (ev.get("ACCESSIBILITY") or "").lower()
+            df = ev.get("DATE_FROM", "")
+            logger.info(
+                "event %s '%s' date=%s meeting_status=%s status=%s acc=%s deleted=%s",
+                ev_id, ev_name, df, meeting_status, status, accessibility,
+                ev.get("DELETED"),
+            )
+
+            if ev.get("DELETED") == "Y":
+                continue
+            # Bitrix DATE_FROM format: "DD.MM.YYYY HH:MM:SS" — keep only today
+            if not df.startswith(today_str):
+                continue
+            # Current user's participation status: H=host, Y=accepted, N=declined, Q=tentative
+            if meeting_status == "N":
+                logger.info("  -> skip (declined)")
+                continue
+            # Event status: CONFIRMED / TENTATIVE / CANCELLED
+            if status == "CANCELLED":
+                logger.info("  -> skip (cancelled)")
+                continue
+            filtered.append({
+                "id": ev["ID"],
+                "name": ev.get("NAME", ""),
+                "date_from": df,
+                "date_to": ev.get("DATE_TO", ""),
+                "owner_id": ev.get("OWNER_ID"),
+                "meeting_status": meeting_status,
+                "status": status,
+            })
+
+        # Sort by date_from
+        filtered.sort(key=lambda e: e["date_from"])
+        return filtered

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Multi-user MAX messenger bot for chat summarization, Bitrix24/Jira integration, AI assistants"
 requires-python = ">=3.11"
 dependencies = [
-    "maxapi>=0.9.4,<1",
+    "maxapi==0.9.4",
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.34,<1",
     "aiosqlite>=0.20,<1",

@@ -1,10 +1,12 @@
 import asyncio
+import inspect
 import logging
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
+from maxapi.dispatcher import Dispatcher as _MaxapiDispatcher
 
 from app.api.routes import router as api_router
 from app.bot.create import create_bot, create_dispatcher
@@ -19,6 +21,19 @@ from app.services.openrouter_client import OpenRouterClient
 from app.services.claude_token import init_token_file
 from app.services.potok_client import PotokClient
 from app.version import __version__
+
+
+# maxapi 0.9.4 injects data into handlers only by *type-annotated* parameter
+# name, which would force us to type-annotate every service parameter on every
+# handler (~50 sites). We patch call_handler to use inspect.signature instead
+# so *all* parameter names match — annotated or not.
+async def _patched_call_handler(self, handler, event_object, data):
+    sig = inspect.signature(handler.func_event)
+    param_names = set(sig.parameters.keys())
+    kwargs_filtered = {k: v for k, v in data.items() if k in param_names}
+    await handler.func_event(event_object, **kwargs_filtered)
+
+_MaxapiDispatcher.call_handler = _patched_call_handler
 
 logging.basicConfig(
     level=logging.INFO,

@@ -17,10 +17,15 @@ class Settings(BaseSettings):
     bitrix_client_secret: SecretStr = SecretStr("")
     bitrix_domain: str = ""
     bitrix_refresh_token: str = ""
-    # Custom Bitrix field holding the MAX/Telegram username (@handle).
-    # Name kept as `bitrix_telegram_field` so that the same .env file can
-    # be shared with ArkadyJarvis (same Bitrix portal, same UF_USR).
+    # Custom Bitrix field holding the Telegram username (@handle).
+    # Shared with ArkadyJarvis via the same .env — leave as-is.
     bitrix_telegram_field: str = "UF_USR_1678964886664"
+    # Custom Bitrix field holding the MAX username (@handle). MUST be a
+    # different UF_USR from the Telegram one — MAX and Telegram handles are
+    # distinct namespaces. If empty at startup we fall back to the Telegram
+    # field with a warning, so new deployments can boot before the field is
+    # provisioned.
+    bitrix_max_field: str = ""
     bitrix_email_guests_scan_max: int = 2000
     bitrix_email_guests_multiplier: int = 3
 

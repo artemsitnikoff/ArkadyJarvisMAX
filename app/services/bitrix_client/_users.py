@@ -45,8 +45,20 @@ class _BitrixUsersMixin:
         clean = nickname.lstrip("@")
         variants = [clean, f"@{clean}"]
 
+        # Prefer the MAX-specific field. Fall back to the Telegram field
+        # (with a one-time warning) if the deployer hasn't provisioned a
+        # dedicated MAX custom field in Bitrix yet — lets us boot before
+        # the CRM admin finishes the portal-side setup.
+        field = settings.bitrix_max_field or settings.bitrix_telegram_field
+        if not settings.bitrix_max_field:
+            logger.warning(
+                "BITRIX_MAX_FIELD not set — falling back to BITRIX_TELEGRAM_FIELD "
+                "(%s). Create a separate UF_USR field in Bitrix for MAX handles.",
+                settings.bitrix_telegram_field,
+            )
+
         commands = {
-            v: ("user.get", {"filter": {settings.bitrix_telegram_field: v}})
+            v: ("user.get", {"filter": {field: v}})
             for v in variants
         }
 

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Awaitable, Callable, Dict
 
@@ -19,6 +20,16 @@ def _first_word(text: str | None) -> str:
     if not text:
         return ""
     return text.split()[0].split("@")[0]
+
+
+async def _safe_ack(event: MessageCallback) -> None:
+    """Fire-and-forget callback acknowledgement. Swallows all errors —
+    this runs in a background task and any failure here must not bubble
+    up and kill the handler or log noise."""
+    try:
+        await event.answer()
+    except Exception as e:
+        logger.debug("callback auto-ack failed (ignored): %s", e)
 
 
 def _extract_chat(event: UpdateUnion) -> tuple[int | None, str]:
@@ -93,6 +104,16 @@ class AuthMiddleware(BaseMiddleware):
         # Callback queries — inject db_user and hand over.
         if isinstance(event_object, MessageCallback):
             uid = event_object.callback.user.user_id
+
+            # Auto-ack the callback IMMEDIATELY in the background so MAX
+            # removes the button's "pressed" state right away, while the
+            # handler's edit()/send() continue in the main flow. Without
+            # this the UI sits in loading state until the whole handler
+            # finishes (can be 400-1000ms). Pure ack — my patched
+            # MessageCallback.answer() without args leaves message text
+            # and attachments alone.
+            asyncio.create_task(_safe_ack(event_object))
+
             data["db_user"] = await db.get_user(uid)
             return await handler(event_object, data)
 

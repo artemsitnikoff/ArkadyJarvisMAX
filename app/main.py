@@ -53,6 +53,40 @@ def _delegate(method_name: str):
 for _name in ("edit", "delete", "reply", "answer", "forward", "pin"):
     setattr(_SendedMessage, _name, _delegate(_name))
 
+
+# MessageCallback.answer() in maxapi 0.9.4 always re-sends a message
+# payload with the ORIGINAL keyboard back to MAX:
+#
+#     message.attachments = self.message.body.attachments  # <- original!
+#     return await self.bot.send_callback(..., message=message, ...)
+#
+# When a handler does `event.message.edit(attachments=new_kb)` and THEN
+# `await event.answer()`, MAX flashes the new keyboard and reverts to
+# the old one because the callback response re-applies the old kb.
+#
+# Fix: if the caller passes no new_text and no notification, treat
+# `answer()` as a pure acknowledgement — send `message=None` so MAX
+# leaves the edited content alone.
+from maxapi.types.updates.message_callback import MessageCallback as _MessageCallback
+
+_original_mc_answer = _MessageCallback.answer
+
+async def _patched_mc_answer(self, notification=None, new_text=None, link=None, notify=True, format=None):
+    if notification is None and new_text is None and link is None:
+        if self.bot is None:
+            raise RuntimeError("Bot не инициализирован")
+        return await self.bot.send_callback(
+            callback_id=self.callback.callback_id,
+            message=None,
+            notification=None,
+        )
+    return await _original_mc_answer(
+        self, notification=notification, new_text=new_text,
+        link=link, notify=notify, format=format,
+    )
+
+_MessageCallback.answer = _patched_mc_answer
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

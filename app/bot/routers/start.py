@@ -115,9 +115,15 @@ HELP_TEXT = (
 @router.message_created(CommandStart())
 async def cmd_start(event: MessageCreated, bitrix):
     msg = event.message
-    user_id = msg.sender.user_id
-    existing = await db.get_user(user_id)
+    sender = msg.sender
+    user_id = sender.user_id
 
+    logger.info(
+        "MAX /start: user_id=%s first_name=%r last_name=%r username=%r",
+        user_id, sender.first_name, sender.last_name, sender.username,
+    )
+
+    existing = await db.get_user(user_id)
     if existing and existing.get("bitrix_user_id"):
         await msg.answer(
             f"✅ Ты авторизован как <b>{html_mod.escape(existing['display_name'] or '')}</b>.\n\n"
@@ -126,22 +132,42 @@ async def cmd_start(event: MessageCreated, bitrix):
         )
         return
 
-    username = msg.sender.username
-    if not username:
-        await msg.answer(
-            "❌ У тебя не задан username в MAX.\n"
-            "Укажи его в настройках профиля и попробуй снова.",
-        )
-        return
+    # In MAX, user.username is optional (unlike Telegram where it's a unique
+    # @-handle). We accept either: a username if present, or the numeric
+    # user_id as a fallback identifier — the Bitrix admin puts either value
+    # into the MAX field on the employee card.
+    lookup_values: list[str] = [str(user_id)]
+    if sender.username:
+        lookup_values.append(sender.username)
 
-    bitrix_id, full_name = await bitrix.find_user_by_nickname(username)
+    bitrix_id: int | None = None
+    full_name: str | None = None
+    for value in lookup_values:
+        bitrix_id, full_name = await bitrix.find_user_by_nickname(value)
+        if bitrix_id:
+            break
 
     if not bitrix_id:
-        await msg.answer(
-            f"❌ Не нашёл пользователя с ником @{html_mod.escape(username)} в Bitrix24.\n"
-            "Проверь, что ник указан в твоём профиле Bitrix "
-            "(поле MAX / Telegram).",
-        )
+        full_name_display = html_mod.escape(
+            (sender.first_name or "") + " " + (sender.last_name or "")
+        ).strip()
+        hint_lines = [
+            "❌ Не нашёл тебя в Bitrix24.",
+            "",
+            f"Твои данные MAX:",
+            f"• <b>user_id</b>: <code>{user_id}</code>",
+        ]
+        if full_name_display:
+            hint_lines.append(f"• <b>имя</b>: {full_name_display}")
+        if sender.username:
+            hint_lines.append(f"• <b>username</b>: @{html_mod.escape(sender.username)}")
+        hint_lines += [
+            "",
+            "Попроси администратора Bitrix открыть твою карточку сотрудника "
+            "и вписать в поле «MAX» твой <b>user_id</b> "
+            f"(<code>{user_id}</code>). После этого /start снова.",
+        ]
+        await msg.answer("\n".join(hint_lines))
         return
 
     await db.upsert_user(
@@ -151,8 +177,8 @@ async def cmd_start(event: MessageCreated, bitrix):
     )
 
     logger.info(
-        "User authorized: max=%s @%s → bitrix=%s (%s)",
-        user_id, username, bitrix_id, full_name,
+        "User authorized: max=%s → bitrix=%s (%s)",
+        user_id, bitrix_id, full_name,
     )
     await msg.answer(
         f"✅ Ты авторизован как <b>{html_mod.escape(full_name or '')}</b>\n\n"

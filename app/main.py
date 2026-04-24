@@ -35,6 +35,24 @@ async def _patched_call_handler(self, handler, event_object, data):
 
 _MaxapiDispatcher.call_handler = _patched_call_handler
 
+
+# maxapi's send/reply methods return a `SendedMessage` (an API-response
+# wrapper that only exposes `.message`) while incoming updates give you a
+# `Message` that has `.edit`, `.delete`, `.reply`, `.answer`. Routers tend
+# to do `wait = await msg.reply(...)` then later `await wait.edit(...)`,
+# which breaks because `wait` is a SendedMessage. Add delegating methods
+# so the two types share an interface.
+from maxapi.methods.types.sended_message import SendedMessage as _SendedMessage
+
+def _delegate(method_name: str):
+    async def _thunk(self, *args, **kwargs):
+        return await getattr(self.message, method_name)(*args, **kwargs)
+    _thunk.__name__ = method_name
+    return _thunk
+
+for _name in ("edit", "delete", "reply", "answer", "forward", "pin"):
+    setattr(_SendedMessage, _name, _delegate(_name))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

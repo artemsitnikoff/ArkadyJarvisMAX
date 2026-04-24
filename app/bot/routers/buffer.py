@@ -4,13 +4,31 @@ from zoneinfo import ZoneInfo
 
 from maxapi import F, Router
 from maxapi.enums.chat_type import ChatType
-from maxapi.types import MessageCreated
+from maxapi.types import MessageCallback, MessageCreated
 
 from app import db
 from app.config import settings
 
 logger = logging.getLogger("arkadyjarvismax")
 router = Router()
+
+
+# Stale-callback catch-all. Registered on the LAST router so it fires only
+# when no state-filtered picker handler matched (typical after a container
+# restart wipes in-memory FSM state, or when the user clicks a button from
+# an old message after completing a different flow).
+_STALE_CALLBACK_PREFIXES = ("pick:", "book:", "mtg:", "search:", "day:", "recruit:")
+
+
+@router.message_callback()
+async def handle_stale_callback(event: MessageCallback):
+    payload = event.callback.payload or ""
+    if not any(payload.startswith(p) for p in _STALE_CALLBACK_PREFIXES):
+        return
+    logger.info("Stale callback from user=%s: %r", event.callback.user.user_id, payload)
+    await event.answer(
+        notification="Кнопки устарели — нажми ◀️ Меню и начни заново",
+    )
 
 
 @router.message_created(F.message.body.text)

@@ -72,13 +72,18 @@ from maxapi.types.updates.message_callback import MessageCallback as _MessageCal
 _original_mc_answer = _MessageCallback.answer
 
 async def _patched_mc_answer(self, notification=None, new_text=None, link=None, notify=True, format=None):
-    if notification is None and new_text is None and link is None:
+    # If we only want to ack and/or show a toast (notification), never
+    # resend the message payload — MAX would otherwise reapply the old
+    # keyboard and clobber any edit we made. A `new_text`/`link` call
+    # still goes through the original path because it legitimately
+    # wants to replace the message content.
+    if new_text is None and link is None:
         if self.bot is None:
             raise RuntimeError("Bot не инициализирован")
         return await self.bot.send_callback(
             callback_id=self.callback.callback_id,
             message=None,
-            notification=None,
+            notification=notification,
         )
     return await _original_mc_answer(
         self, notification=notification, new_text=new_text,

@@ -275,6 +275,11 @@ async def handle_mtg_pick_user(event: MessageCallback, context: MemoryContext):
     bitrix_id = int(parts[1])
     name = parts[2]
 
+    # Instant toast — user sees acknowledgement in <100ms, before the
+    # message body edit (~300ms RTT) completes.
+    import asyncio as _asyncio
+    _asyncio.create_task(event.answer(notification=f"✓ {name}"))
+
     data = await context.get_data()
     attendee_ids: list[int] = data.get("attendee_ids", [])
     attendee_names: list[str] = data.get("attendee_names", [])
@@ -293,7 +298,7 @@ async def handle_mtg_pick_user(event: MessageCallback, context: MemoryContext):
         text=f"Выбраны: {selected}",
         attachments=_search_status_kb(attendee_names, show_add_me=add_me),
     )
-    await event.answer()
+    # No trailing event.answer() — the toast above already ack'd the callback.
 
 
 @router.message_callback(F.callback.payload == ADD_ME_CB, MeetingSetup.searching_attendee)

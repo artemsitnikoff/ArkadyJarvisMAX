@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import json
 import logging
 import time
@@ -79,7 +80,7 @@ class BroadcastResponse(BaseModel):
 def _check_token(token: str | None):
     if not settings.webhook_token:
         raise HTTPException(503, "WEBHOOK_TOKEN not configured on server")
-    if token != settings.webhook_token:
+    if not hmac.compare_digest(token or "", settings.webhook_token):
         raise HTTPException(403, "Invalid token")
 
 

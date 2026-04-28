@@ -261,6 +261,9 @@ async def handle_pick_user(event: MessageCallback, context: MemoryContext):
 @router.message_callback(F.callback.payload == ADD_ME_CB, BookSlot.searching_attendee)
 async def handle_add_me(event: MessageCallback, context: MemoryContext):
     db_user = await db.get_user(event.callback.user.user_id)
+    if not db_user or not db_user.get("bitrix_user_id"):
+        await event.answer(notification="❌ Сначала авторизуйся через /start")
+        return
     bitrix_id = db_user["bitrix_user_id"]
     name = db_user["display_name"]
 
@@ -365,6 +368,9 @@ async def handle_slot_selected(event: MessageCallback, context: MemoryContext, b
         await event.answer()
 
         db_user = await db.get_user(event.callback.user.user_id)
+        if not db_user or not db_user.get("bitrix_user_id"):
+            await event.answer(notification="❌ Сначала авторизуйся через /start")
+            return
         attendee_ids = data["attendee_ids"]
         attendee_names = data.get("attendee_names", [])
 

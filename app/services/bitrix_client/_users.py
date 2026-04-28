@@ -6,6 +6,8 @@ from app.config import settings
 
 logger = logging.getLogger("arkadyjarvismax")
 
+_MAX_FIELD_WARNING_LOGGED = False
+
 
 class _BitrixUsersMixin:
     """User-related Bitrix24 methods."""
@@ -49,8 +51,10 @@ class _BitrixUsersMixin:
         # (with a one-time warning) if the deployer hasn't provisioned a
         # dedicated MAX custom field in Bitrix yet — lets us boot before
         # the CRM admin finishes the portal-side setup.
+        global _MAX_FIELD_WARNING_LOGGED
         field = settings.bitrix_max_field or settings.bitrix_telegram_field
-        if not settings.bitrix_max_field:
+        if not settings.bitrix_max_field and not _MAX_FIELD_WARNING_LOGGED:
+            _MAX_FIELD_WARNING_LOGGED = True
             logger.warning(
                 "BITRIX_MAX_FIELD not set — falling back to BITRIX_TELEGRAM_FIELD "
                 "(%s). Create a separate UF_USR field in Bitrix for MAX handles.",

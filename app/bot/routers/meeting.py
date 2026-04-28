@@ -304,6 +304,9 @@ async def handle_mtg_pick_user(event: MessageCallback, context: MemoryContext):
 @router.message_callback(F.callback.payload == ADD_ME_CB, MeetingSetup.searching_attendee)
 async def handle_mtg_add_me(event: MessageCallback, context: MemoryContext):
     db_user = await db.get_user(event.callback.user.user_id)
+    if not db_user or not db_user.get("bitrix_user_id"):
+        await event.answer(notification="❌ Сначала авторизуйся через /start")
+        return
     bitrix_id = db_user["bitrix_user_id"]
     name = db_user["display_name"]
 
@@ -372,6 +375,9 @@ async def handle_mtg_title_input(
     ctx_text = f"{title}\n\n{ctx_text}" if ctx_text else title
 
     db_user = await db.get_user(msg.sender.user_id)
+    if not db_user or not db_user.get("bitrix_user_id"):
+        await msg.reply("❌ Сначала авторизуйся: /start")
+        return
     await _do_create_meeting(msg, db_user, bitrix, dt, ctx_text, attendee_ids, attendee_names)
     await context.clear()
     logger.info("*** Meeting created via interactive search: %s attendees=%s", title, attendee_ids)

@@ -19,7 +19,7 @@ from app.config import settings
 
 logger = logging.getLogger("arkadyjarvismax")
 
-TOKEN_FILE = Path("data/.claude_token.json")
+TOKEN_FILE = Path(__file__).resolve().parent.parent.parent / "data" / ".claude_token.json"
 TOKEN_URL = "https://api.anthropic.com/v1/oauth/token"
 REFRESH_BUFFER_MS = 600_000  # refresh 10 min before expiry
 

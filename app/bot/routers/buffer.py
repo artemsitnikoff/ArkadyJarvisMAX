@@ -17,7 +17,10 @@ router = Router()
 # when no state-filtered picker handler matched (typical after a container
 # restart wipes in-memory FSM state, or when the user clicks a button from
 # an old message after completing a different flow).
-_STALE_CALLBACK_PREFIXES = ("pick:", "book:", "mtg:", "search:", "day:", "recruit:")
+_STALE_CALLBACK_PREFIXES = (
+    "pick:", "book:", "mtg:", "search:", "day:", "recruit:",
+    "emp:", "work:", "hint:", "back:", "glafira:",
+)
 
 
 @router.message_callback()

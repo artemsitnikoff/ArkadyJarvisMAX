@@ -96,7 +96,7 @@ async def _download_stage(url: str, raw_path: Path, wait_msg) -> float:
     try:
         size_bytes = await download_meeting(url, raw_path)
     except DownloadError as e:
-        await _abort(wait_msg, f"❌ Не смог скачать: {e}")
+        await _abort(wait_msg, f"❌ Не смог скачать: {e}")  # raises _StageAbort
     size_mb = size_bytes / (1024 * 1024)
     await _safe_edit(wait_msg, f"🎚 Скачано {size_mb:.1f} МБ. Проверяю длительность...")
     return size_mb
@@ -129,7 +129,7 @@ async def _convert_and_probe_stage(raw_path, ogg_path, size_mb, wait_msg):
         await convert_to_opus(raw_path, ogg_path)
     except FFmpegError as e:
         logger.error("ffmpeg failed: %s", e)
-        await _abort(wait_msg, f"❌ Не смог обработать аудио (ffmpeg): {e}")
+        await _abort(wait_msg, f"❌ Не смог обработать аудио (ffmpeg): {e}")  # raises _StageAbort
 
     if duration_sec == 0.0:
         try:

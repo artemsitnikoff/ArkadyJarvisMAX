@@ -40,6 +40,10 @@ def _load() -> dict:
 
 def _save(data: dict) -> None:
     TOKEN_FILE.write_text(json.dumps(data, indent=2))
+    try:
+        TOKEN_FILE.chmod(0o600)
+    except OSError as e:
+        logger.warning("chmod 0o600 on %s failed: %s", TOKEN_FILE, e)
 
 
 def init_token_file() -> None:

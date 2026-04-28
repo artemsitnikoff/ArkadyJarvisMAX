@@ -277,8 +277,8 @@ async def handle_mtg_pick_user(event: MessageCallback, context: MemoryContext):
 
     # Instant toast — user sees acknowledgement in <100ms, before the
     # message body edit (~300ms RTT) completes.
-    import asyncio as _asyncio
-    _asyncio.create_task(event.answer(notification=f"✓ {name}"))
+    from app.bg_tasks import spawn as _spawn_bg
+    _spawn_bg(event.answer(notification=f"✓ {name}"))
 
     data = await context.get_data()
     attendee_ids: list[int] = data.get("attendee_ids", [])

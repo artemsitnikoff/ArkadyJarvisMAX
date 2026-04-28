@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Any, Awaitable, Callable, Dict
 
@@ -7,6 +6,7 @@ from maxapi.types import MessageCallback, MessageCreated, UpdateUnion
 from maxapi.enums.chat_type import ChatType
 
 from app import db
+from app.bg_tasks import spawn as _spawn_bg
 
 logger = logging.getLogger("arkadyjarvismax")
 
@@ -112,7 +112,7 @@ class AuthMiddleware(BaseMiddleware):
             # finishes (can be 400-1000ms). Pure ack — my patched
             # MessageCallback.answer() without args leaves message text
             # and attachments alone.
-            asyncio.create_task(_safe_ack(event_object))
+            _spawn_bg(_safe_ack(event_object))
 
             data["db_user"] = await db.get_user(uid)
             return await handler(event_object, data)

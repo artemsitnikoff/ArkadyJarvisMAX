@@ -57,7 +57,31 @@ CREATE TABLE IF NOT EXISTS muted_groups (
 """
 
 
-MIGRATIONS: list[str] = []
+async def _users_columns(db: aiosqlite.Connection) -> set[str]:
+    async with db.execute("PRAGMA table_info(users)") as cur:
+        rows = await cur.fetchall()
+    return {row["name"] for row in rows}
+
+
+async def _migrate_rename_telegram_id_to_max_user_id(db: aiosqlite.Connection) -> None:
+    """Rename users.telegram_id → users.max_user_id if upgrading from the
+    pre-MAX schema (e.g. a Jarvis-shaped DB someone copied over). On a fresh
+    deployment SCHEMA already created the column with the right name and
+    this migration is a no-op."""
+    cols = await _users_columns(db)
+    if "telegram_id" in cols and "max_user_id" not in cols:
+        logger.info("Migration: renaming users.telegram_id → users.max_user_id")
+        await db.execute("ALTER TABLE users RENAME COLUMN telegram_id TO max_user_id")
+
+
+# Each migration is an async callable taking the connection. They run in
+# order, IDEMPOTENT — every migration must check current schema state and
+# do nothing if already applied. We track schema_version as a guard so we
+# can see in logs which version each DB is at, but the actual gating lives
+# inside each migration.
+MIGRATIONS: list = [
+    _migrate_rename_telegram_id_to_max_user_id,
+]
 
 
 async def _run_migrations(db: aiosqlite.Connection) -> None:
@@ -68,18 +92,19 @@ async def _run_migrations(db: aiosqlite.Connection) -> None:
         row = await cur.fetchone()
     current = row[0] if row else 0
 
-    for i, sql in enumerate(MIGRATIONS, start=1):
+    for i, migration in enumerate(MIGRATIONS, start=1):
         if i > current:
-            logger.info("Running migration %d ...", i)
-            await db.executescript(sql)
-            if current == 0:
-                await db.execute("INSERT INTO schema_version (version) VALUES (?)", (i,))
-            else:
+            logger.info("Running migration %d: %s", i, migration.__name__)
+            await migration(db)
+            if row:
                 await db.execute("UPDATE schema_version SET version = ?", (i,))
+            else:
+                await db.execute("INSERT INTO schema_version (version) VALUES (?)", (i,))
+                row = (i,)  # mark as inserted for subsequent iterations
             current = i
 
-    if not row and not MIGRATIONS:
-        await db.execute("INSERT INTO schema_version (version) VALUES (0)")
+    if not row:
+        await db.execute("INSERT INTO schema_version (version) VALUES (?)", (current,))
 
     await db.commit()
     logger.info("Schema version: %d", current)

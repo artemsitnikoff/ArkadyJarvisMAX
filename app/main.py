@@ -1,12 +1,15 @@
 import asyncio
-import inspect
 import logging
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
-from maxapi.dispatcher import Dispatcher as _MaxapiDispatcher
+
+# maxapi compat patches — must run before create_bot/create_dispatcher
+# so the patched classes are picked up by the rest of app code.
+from app.bot.maxapi_compat import apply_patches as _apply_maxapi_patches
+_apply_maxapi_patches()
 
 from app.api.routes import router as api_router
 from app.bot.create import create_bot, create_dispatcher
@@ -22,75 +25,6 @@ from app.services.claude_token import init_token_file
 from app.services.potok_client import PotokClient
 from app.version import __version__
 
-
-# maxapi 0.9.4 injects data into handlers only by *type-annotated* parameter
-# name, which would force us to type-annotate every service parameter on every
-# handler (~50 sites). We patch call_handler to use inspect.signature instead
-# so *all* parameter names match — annotated or not.
-async def _patched_call_handler(self, handler, event_object, data):
-    sig = inspect.signature(handler.func_event)
-    param_names = set(sig.parameters.keys())
-    kwargs_filtered = {k: v for k, v in data.items() if k in param_names}
-    await handler.func_event(event_object, **kwargs_filtered)
-
-_MaxapiDispatcher.call_handler = _patched_call_handler
-
-
-# maxapi's send/reply methods return a `SendedMessage` (an API-response
-# wrapper that only exposes `.message`) while incoming updates give you a
-# `Message` that has `.edit`, `.delete`, `.reply`, `.answer`. Routers tend
-# to do `wait = await msg.reply(...)` then later `await wait.edit(...)`,
-# which breaks because `wait` is a SendedMessage. Add delegating methods
-# so the two types share an interface.
-from maxapi.methods.types.sended_message import SendedMessage as _SendedMessage
-
-def _delegate(method_name: str):
-    async def _thunk(self, *args, **kwargs):
-        return await getattr(self.message, method_name)(*args, **kwargs)
-    _thunk.__name__ = method_name
-    return _thunk
-
-for _name in ("edit", "delete", "reply", "answer", "forward", "pin"):
-    setattr(_SendedMessage, _name, _delegate(_name))
-
-
-# MessageCallback.answer() in maxapi 0.9.4 always re-sends a message
-# payload with the ORIGINAL keyboard back to MAX:
-#
-#     message.attachments = self.message.body.attachments  # <- original!
-#     return await self.bot.send_callback(..., message=message, ...)
-#
-# When a handler does `event.message.edit(attachments=new_kb)` and THEN
-# `await event.answer()`, MAX flashes the new keyboard and reverts to
-# the old one because the callback response re-applies the old kb.
-#
-# Fix: if the caller passes no new_text and no notification, treat
-# `answer()` as a pure acknowledgement — send `message=None` so MAX
-# leaves the edited content alone.
-from maxapi.types.updates.message_callback import MessageCallback as _MessageCallback
-
-_original_mc_answer = _MessageCallback.answer
-
-async def _patched_mc_answer(self, notification=None, new_text=None, link=None, notify=True, format=None):
-    # If we only want to ack and/or show a toast (notification), never
-    # resend the message payload — MAX would otherwise reapply the old
-    # keyboard and clobber any edit we made. A `new_text`/`link` call
-    # still goes through the original path because it legitimately
-    # wants to replace the message content.
-    if new_text is None and link is None:
-        if self.bot is None:
-            raise RuntimeError("Bot не инициализирован")
-        return await self.bot.send_callback(
-            callback_id=self.callback.callback_id,
-            message=None,
-            notification=notification,
-        )
-    return await _original_mc_answer(
-        self, notification=notification, new_text=new_text,
-        link=link, notify=notify, format=format,
-    )
-
-_MessageCallback.answer = _patched_mc_answer
 
 logging.basicConfig(
     level=logging.INFO,

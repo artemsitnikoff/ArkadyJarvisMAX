@@ -38,6 +38,13 @@ async def buffer_message(event: MessageCreated):
     if msg.recipient.chat_type != ChatType.CHAT:
         return
 
+    # Belt-and-braces against a NULL text slipping past the F.message.body.text
+    # filter (sticker/poll/voice race) — message_buffer.text is NOT NULL and
+    # would otherwise crash the INSERT.
+    text = msg.body.text or ""
+    if not text:
+        return
+
     sender_name = ""
     if msg.sender:
         parts = [msg.sender.first_name or ""]
@@ -57,6 +64,6 @@ async def buffer_message(event: MessageCreated):
         chat_id=msg.recipient.chat_id,
         sender_id=msg.sender.user_id if msg.sender else 0,
         sender_name=sender_name,
-        text=msg.body.text,
+        text=text,
         sent_at=sent_at,
     )

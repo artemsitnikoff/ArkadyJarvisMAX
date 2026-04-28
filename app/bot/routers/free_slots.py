@@ -237,8 +237,8 @@ async def handle_pick_user(event: MessageCallback, context: MemoryContext):
     bitrix_id = int(parts[1])
     name = parts[2]
 
-    import asyncio as _asyncio
-    _asyncio.create_task(event.answer(notification=f"✓ {name}"))
+    from app.bg_tasks import spawn as _spawn_bg
+    _spawn_bg(event.answer(notification=f"✓ {name}"))
 
     data = await context.get_data()
     attendee_ids: list[int] = data.get("attendee_ids", [])

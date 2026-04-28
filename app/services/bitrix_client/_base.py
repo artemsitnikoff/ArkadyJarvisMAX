@@ -43,6 +43,10 @@ class _BitrixBase:
         }
         TOKENS_FILE.parent.mkdir(parents=True, exist_ok=True)
         TOKENS_FILE.write_text(json.dumps(tokens, indent=2))
+        try:
+            TOKENS_FILE.chmod(0o600)
+        except OSError as e:
+            logger.warning("chmod 0o600 on %s failed: %s", TOKENS_FILE, e)
         logger.info("Bitrix tokens saved (endpoint: %s)", tokens["client_endpoint"])
 
     async def _refresh_access_token(self, refresh_token: str) -> dict:

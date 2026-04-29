@@ -28,7 +28,7 @@ MAX_HISTORY = 20
 def glafira_exit_kb():
     b = InlineKeyboardBuilder()
     b.row(CallbackButton(text="◀️ Меню", payload="glafira:exit"))
-    return b.as_markup()
+    return [b.as_markup()]
 
 
 class Glafira(StatesGroup):
@@ -74,14 +74,14 @@ async def handle_glafira_message(
         ):
             full_text += chunk
 
-            now = asyncio.get_event_loop().time()
+            now = asyncio.get_running_loop().time()
             if (now - last_edit_time >= edit_interval
                     and len(full_text) - last_edit_len >= 20):
                 try:
                     display = html_mod.escape(full_text[:4000])
                     await wait_msg.edit(
                         text=f"🤖 {display}",
-                        attachments=[glafira_exit_kb()],
+                        attachments=glafira_exit_kb(),
                     )
                     last_edit_len = len(full_text)
                     last_edit_time = now
@@ -94,7 +94,7 @@ async def handle_glafira_message(
             final_msg = f"🤖 {display}"
             try:
                 await wait_msg.edit(
-                    text=final_msg, attachments=[glafira_exit_kb()],
+                    text=final_msg, attachments=glafira_exit_kb(),
                 )
             except Exception as e:
                 if "not modified" not in str(e):
@@ -102,7 +102,7 @@ async def handle_glafira_message(
         else:
             await wait_msg.edit(
                 text="🤖 Глафира не ответила. Попробуй переформулировать.",
-                attachments=[glafira_exit_kb()],
+                attachments=glafira_exit_kb(),
             )
 
         conv_messages.append({"role": "assistant", "content": full_text})
@@ -112,5 +112,5 @@ async def handle_glafira_message(
         logger.error("Glafira error: %s", e, exc_info=True)
         await wait_msg.edit(
             text=f"❌ Ошибка связи с Глафирой: {html_mod.escape(str(e))}",
-            attachments=[glafira_exit_kb()],
+            attachments=glafira_exit_kb(),
         )

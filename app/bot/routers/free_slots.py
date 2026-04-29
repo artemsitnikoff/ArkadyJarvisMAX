@@ -180,7 +180,7 @@ async def _find_and_show_slots(
         await context.update_data(
             attendee_ids=user_ids,
             attendee_names=user_names,
-            year=work_days[0].year,
+            year_by_month={str(d.month): d.year for d in work_days},
         )
         await context.set_state(BookSlot.waiting_for_slot)
 
@@ -340,6 +340,7 @@ async def handle_day_header(event: MessageCallback):
 async def handle_slot_selected(event: MessageCallback, context: MemoryContext, bitrix):
     payload = event.callback.payload
     if payload == "book:cancel":
+        await event.answer()
         return  # handled by cancel router
 
     parts = payload.split(":")
@@ -349,10 +350,11 @@ async def handle_slot_selected(event: MessageCallback, context: MemoryContext, b
 
     _, day_str, start_str, end_str = parts
     data = await context.get_data()
-    year = data.get("year", datetime.now(ZoneInfo(settings.timezone)).year)
+    year_by_month = data.get("year_by_month", {})
+    month = int(day_str[2:])
+    year = year_by_month.get(str(month), datetime.now(ZoneInfo(settings.timezone)).year)
 
     day = int(day_str[:2])
-    month = int(day_str[2:])
     sh, sm = int(start_str[:2]), int(start_str[2:])
     eh, em = int(end_str[:2]), int(end_str[2:])
 
@@ -364,13 +366,12 @@ async def handle_slot_selected(event: MessageCallback, context: MemoryContext, b
 
     topic = data.get("topic")
     if topic:
-        await event.message.edit(text=f"Создаю встречу «{topic}» на {label}...")
-        await event.answer()
-
         db_user = await db.get_user(event.callback.user.user_id)
         if not db_user or not db_user.get("bitrix_user_id"):
             await event.answer(notification="❌ Сначала авторизуйся через /start")
             return
+        await event.message.edit(text=f"Создаю встречу «{topic}» на {label}...")
+        await event.answer()
         attendee_ids = data["attendee_ids"]
         attendee_names = data.get("attendee_names", [])
 

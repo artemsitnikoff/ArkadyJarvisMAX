@@ -112,7 +112,7 @@ async def _create_lead(msg, text: str, *, ai_client, bitrix, db_user=None):
     sender = msg.sender
     if sender:
         username = sender.username or ""
-        creator_name = sender.full_name or ""
+        creator_name = f"{sender.first_name or ''} {sender.last_name or ''}".strip()
         source_parts = [f"Создал: {creator_name}"]
         if username:
             source_parts.append(f"@{username}")

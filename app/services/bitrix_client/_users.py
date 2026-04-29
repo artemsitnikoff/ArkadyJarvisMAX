@@ -93,7 +93,7 @@ class _BitrixUsersMixin:
                     seen.add(uid)
                     name = f"{u.get('NAME', '')} {u.get('LAST_NAME', '')}".strip()
                     users.append({"id": uid, "name": name})
-                    if len(users) >= limit:
+                    if limit and len(users) >= limit:
                         return users
         return users
 

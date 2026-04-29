@@ -163,7 +163,8 @@ app = FastAPI(
     title="ArkadyJarvisMAX",
     description="MAX-мессенджер бот для команды: Bitrix24, Jira, AI, рекрутинг",
     version=__version__,
-    docs_url="/docs",
+    docs_url=None,
+    redoc_url=None,
     lifespan=lifespan,
 )
 app.state.bot = bot

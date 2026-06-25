@@ -21,6 +21,11 @@ from app.version import __version__
 logger = logging.getLogger("arkadyjarvismax")
 router = Router()
 
+# MAX rejects a message with no text (proto.payload / errors.required), even
+# when an inline keyboard attachment is present. So the "no text" UI still
+# needs a minimal non-empty body — keep it to a single marker.
+MENU_TEXT = "🧪"
+
 
 def menu_kb():
     """Build the main menu keyboard. Rebuilt each time because MAX keyboards
@@ -135,7 +140,7 @@ async def cmd_start(event: MessageCreated, bitrix):
 
     existing = await db.get_user(user_id)
     if existing and existing.get("bitrix_user_id"):
-        await msg.answer(attachments=MENU_KB())
+        await msg.answer(MENU_TEXT, attachments=MENU_KB())
         return
 
     # In MAX, user.username is optional (unlike Telegram where it's a unique
@@ -186,12 +191,12 @@ async def cmd_start(event: MessageCreated, bitrix):
         "User authorized: max=%s → bitrix=%s (%s)",
         user_id, bitrix_id, full_name,
     )
-    await msg.answer(attachments=MENU_KB())
+    await msg.answer(MENU_TEXT, attachments=MENU_KB())
 
 
 @router.message_created(Command("help"))
 async def cmd_help(event: MessageCreated):
-    await event.message.answer(attachments=MENU_KB())
+    await event.message.answer(MENU_TEXT, attachments=MENU_KB())
 
 
 @router.message_callback(F.callback.payload == "noop")
@@ -678,5 +683,5 @@ async def _show_meetings(event: MessageCallback, bitrix):
 @router.message_callback(F.callback.payload == "back:menu")
 async def handle_back_menu(event: MessageCallback, context: MemoryContext):
     await context.clear()
-    await event.message.answer(attachments=MENU_KB())
+    await event.message.answer(MENU_TEXT, attachments=MENU_KB())
     await event.answer()

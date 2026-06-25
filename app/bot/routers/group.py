@@ -22,18 +22,7 @@ async def on_bot_added(event: BotAdded):
 
     await db.upsert_group_chat(chat_id, title)
     logger.info("Bot added to chat: %s (%s)", title, chat_id)
-
-    try:
-        await event.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                "👋 Привет! Я ArkadyJarvis для MAX.\n\n"
-                "Собираю переписку для суммаризации и отвечаю по команде. "
-                "Напишите мне в ЛС /start для авторизации."
-            ),
-        )
-    except Exception as e:
-        logger.warning("Could not send welcome message: %s", e)
+    # Stay silent in the group — just track it, no welcome message.
 
 
 @router.bot_removed()

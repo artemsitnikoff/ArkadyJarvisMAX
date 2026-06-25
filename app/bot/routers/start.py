@@ -71,7 +71,7 @@ def test_kb():
     """Temporary test-mode keyboard — a single button that prints the bot's
     group chats and the last message in the test group."""
     b = InlineKeyboardBuilder()
-    b.row(CallbackButton(text="🧪 Тест — последнее сообщение", payload="test:lastmsg"))
+    b.row(CallbackButton(text="🧪 Тест", payload="test:lastmsg"))
     return b.as_markup()
 
 
@@ -135,11 +135,7 @@ async def cmd_start(event: MessageCreated, bitrix):
 
     existing = await db.get_user(user_id)
     if existing and existing.get("bitrix_user_id"):
-        await msg.answer(
-            f"✅ Ты авторизован как <b>{html_mod.escape(existing['display_name'] or '')}</b>.\n\n"
-            "Выбери команду — покажу подсказку:",
-            attachments=MENU_KB(),
-        )
+        await msg.answer(attachments=MENU_KB())
         return
 
     # In MAX, user.username is optional (unlike Telegram where it's a unique
@@ -190,16 +186,12 @@ async def cmd_start(event: MessageCreated, bitrix):
         "User authorized: max=%s → bitrix=%s (%s)",
         user_id, bitrix_id, full_name,
     )
-    await msg.answer(
-        f"✅ Ты авторизован как <b>{html_mod.escape(full_name or '')}</b>\n\n"
-        "Выбери команду — покажу подсказку:",
-        attachments=MENU_KB(),
-    )
+    await msg.answer(attachments=MENU_KB())
 
 
 @router.message_created(Command("help"))
 async def cmd_help(event: MessageCreated):
-    await event.message.answer(HELP_TEXT, attachments=MENU_KB())
+    await event.message.answer(attachments=MENU_KB())
 
 
 @router.message_callback(F.callback.payload == "noop")
@@ -686,8 +678,5 @@ async def _show_meetings(event: MessageCallback, bitrix):
 @router.message_callback(F.callback.payload == "back:menu")
 async def handle_back_menu(event: MessageCallback, context: MemoryContext):
     await context.clear()
-    await event.message.answer(
-        "Выбери команду — покажу подсказку:",
-        attachments=MENU_KB(),
-    )
+    await event.message.answer(attachments=MENU_KB())
     await event.answer()

@@ -97,7 +97,11 @@ async def ensure_fresh_token() -> None:
             logger.debug("No refresh token available, using current access token")
             return
 
-        logger.info("Refreshing Claude OAuth token...")
+        rt_fp = refresh_token[:8] + "…" + refresh_token[-4:]
+        logger.info(
+            "Refreshing Claude OAuth token (refresh fingerprint=%s, file=%s)",
+            rt_fp, TOKEN_FILE,
+        )
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.post(
@@ -109,9 +113,19 @@ async def ensure_fresh_token() -> None:
                     },
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
-                resp.raise_for_status()
-                result = resp.json()
 
+            if resp.status_code >= 400:
+                # Anthropic returns JSON like {"error":"invalid_grant",...}.
+                # We MUST log the body — status code alone can't distinguish
+                # invalid_grant (refresh already used / expired — needs re-login)
+                # from invalid_client (wrong client_id — config issue).
+                logger.error(
+                    "Claude token refresh HTTP %d: %s",
+                    resp.status_code, resp.text[:500],
+                )
+                resp.raise_for_status()
+
+            result = resp.json()
             new_access = result["access_token"]
             new_refresh = result["refresh_token"]
             expires_in = result.get("expires_in", 28800)  # default 8h
@@ -124,9 +138,10 @@ async def ensure_fresh_token() -> None:
             _save(new_data)
             os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = new_access
 
+            new_fp = new_refresh[:8] + "…" + new_refresh[-4:]
             logger.info(
-                "Claude token refreshed, expires in %d hours",
-                expires_in // 3600,
+                "Claude token refreshed: new refresh fingerprint=%s, expires in %d hours",
+                new_fp, expires_in // 3600,
             )
 
         except Exception as e:

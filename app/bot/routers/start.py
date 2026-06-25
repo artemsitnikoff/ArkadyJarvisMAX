@@ -1,6 +1,6 @@
 import html as html_mod
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from maxapi import F, Router
 from maxapi.context import MemoryContext
@@ -67,8 +67,18 @@ def back_menu_kb():
     return b.as_markup()
 
 
+def test_kb():
+    """Temporary test-mode keyboard — a single button that prints the bot's
+    group chats and the last message in the test group."""
+    b = InlineKeyboardBuilder()
+    b.row(CallbackButton(text="🧪 Тест — последнее сообщение", payload="test:lastmsg"))
+    return b.as_markup()
+
+
 def MENU_KB():
-    return [menu_kb()]
+    # Menu temporarily hidden for testing. To restore the full menu,
+    # return [menu_kb()] here instead of [test_kb()].
+    return [test_kb()]
 
 
 def BACK_MENU_KB():
@@ -195,6 +205,102 @@ async def cmd_help(event: MessageCreated):
 @router.message_callback(F.callback.payload == "noop")
 async def handle_noop(event: MessageCallback):
     await event.answer()
+
+
+@router.message_callback(F.callback.payload == "test:lastmsg")
+async def handle_test_lastmsg(event: MessageCallback, bot):
+    """Test button: list the bot's group chats (so we learn their chat_id) and
+    print the most recent message of the test group. Pulls live via the MAX API
+    (bot.get_chats / bot.get_messages), so it works the moment the bot is in the
+    group — no need to wait for buffered traffic."""
+    from zoneinfo import ZoneInfo
+    from maxapi.enums.chat_type import ChatType
+
+    await event.answer()
+
+    try:
+        chats = await bot.get_chats(count=100)
+    except Exception as e:
+        logger.error("test:lastmsg get_chats failed: %s", e, exc_info=True)
+        await event.message.answer(
+            f"❌ Не смог получить список чатов: {html_mod.escape(str(e))}",
+            attachments=MENU_KB(),
+        )
+        return
+
+    group_chats = [c for c in chats.chats if c.type == ChatType.CHAT]
+    if not group_chats:
+        await event.message.answer(
+            "🤷 Бот пока не состоит ни в одной группе. "
+            "Добавь его в группу и попробуй снова.",
+            attachments=MENU_KB(),
+        )
+        return
+
+    # Prefer the "Контроль КП…" group by title; if the bot is in exactly one
+    # group, use that one regardless of its title.
+    target = next(
+        (c for c in group_chats if c.title and "контроль" in c.title.lower()),
+        None,
+    )
+    if target is None and len(group_chats) == 1:
+        target = group_chats[0]
+
+    if target is None:
+        lines = ["🔎 Не нашёл группу «Контроль КП…». Бот состоит в этих группах:", ""]
+        for c in group_chats:
+            lines.append(
+                f"• <b>{html_mod.escape(c.title or '—')}</b>\n"
+                f"  id <code>{c.chat_id}</code> · 👥 {c.participants_count}"
+            )
+        await event.message.answer("\n".join(lines), attachments=MENU_KB())
+        return
+
+    header = (
+        f"📍 <b>{html_mod.escape(target.title or '—')}</b>\n"
+        f"chat_id: <code>{target.chat_id}</code> · 👥 {target.participants_count}\n"
+        "━━━━━━━━━━━━━━"
+    )
+
+    try:
+        msgs = await bot.get_messages(chat_id=target.chat_id, count=10)
+    except Exception as e:
+        logger.error("test:lastmsg get_messages failed: %s", e, exc_info=True)
+        await event.message.answer(
+            f"{header}\n\n❌ Не смог прочитать сообщения: {html_mod.escape(str(e))}",
+            attachments=MENU_KB(),
+        )
+        return
+
+    if not msgs.messages:
+        await event.message.answer(
+            f"{header}\n\n📭 Сообщений пока нет.", attachments=MENU_KB(),
+        )
+        return
+
+    # The API's message order isn't guaranteed — pick the newest by timestamp.
+    m = max(msgs.messages, key=lambda x: x.timestamp)
+    sender = m.sender.full_name if m.sender else "—"
+    text = (m.body.text if m.body else None) or "<вложение / без текста>"
+    if len(text) > 1500:
+        text = text[:1500] + "…"
+
+    when = ""
+    try:
+        tz = ZoneInfo(settings.timezone)
+        when = (
+            datetime.fromtimestamp(m.timestamp / 1000, tz=timezone.utc)
+            .astimezone(tz)
+            .strftime("%d.%m %H:%M")
+        )
+    except Exception:
+        pass
+
+    await event.message.answer(
+        f"{header}\n\n🕐 {when} · <b>{html_mod.escape(sender)}</b>\n\n"
+        f"{html_mod.escape(text)}",
+        attachments=MENU_KB(),
+    )
 
 
 @router.message_callback(F.callback.payload.startswith("work:"))

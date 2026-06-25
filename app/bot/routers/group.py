@@ -4,7 +4,6 @@ from maxapi import Router
 from maxapi.types import BotAdded, BotRemoved
 
 from app import db
-from app.bot.routers.start import MENU_KB
 
 logger = logging.getLogger("arkadyjarvismax")
 router = Router()
@@ -32,7 +31,6 @@ async def on_bot_added(event: BotAdded):
                 "Собираю переписку для суммаризации и отвечаю по команде. "
                 "Напишите мне в ЛС /start для авторизации."
             ),
-            attachments=MENU_KB(),
         )
     except Exception as e:
         logger.warning("Could not send welcome message: %s", e)

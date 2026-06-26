@@ -206,10 +206,13 @@ async def handle_noop(event: MessageCallback):
 
 @router.message_callback(F.callback.payload == "test:lastmsg")
 async def handle_test_lastmsg(event: MessageCallback, bot):
-    """Test button: list the bot's group chats (so we learn their chat_id) and
-    print the most recent message of the test group. Pulls live via the MAX API
-    (bot.get_chats / bot.get_messages), so it works the moment the bot is in the
-    group — no need to wait for buffered traffic."""
+    """Diagnostic test button. Finds the bot's group chats (so we learn their
+    chat_id) and reports, for the test group, BOTH ways the bot can read it:
+      • PUSH — message_created events captured live into message_buffer (this is
+        what summarization uses);
+      • PULL — bot.get_messages() history fetch.
+    Both require the bot to actually have access to the group's messages, which
+    in MAX means it must be a group administrator."""
     from zoneinfo import ZoneInfo
     from maxapi.enums.chat_type import ChatType
 
@@ -259,43 +262,63 @@ async def handle_test_lastmsg(event: MessageCallback, bot):
         "━━━━━━━━━━━━━━"
     )
 
+    # PUSH channel — what the bot actually captured live into the buffer.
+    buffered = await db.get_buffered_messages(target.chat_id)
+    if buffered:
+        last = buffered[-1]
+        body = html_mod.escape((last.get("text") or "")[:500])
+        push_block = (
+            f"📥 <b>Live-перехват (push): {len(buffered)}</b>\n"
+            f"🕐 {(last.get('sent_at') or '')[:16]} · "
+            f"<b>{html_mod.escape(last.get('sender_name') or '—')}</b>\n{body}"
+        )
+    else:
+        push_block = (
+            "📥 <b>Live-перехват (push): 0</b> — "
+            "бот не получил ни одного сообщения группы"
+        )
+
+    # PULL channel — history fetch via the API.
     try:
         msgs = await bot.get_messages(chat_id=target.chat_id, count=10)
     except Exception as e:
         logger.error("test:lastmsg get_messages failed: %s", e, exc_info=True)
-        await event.message.answer(
-            f"{header}\n\n❌ Не смог прочитать сообщения: {html_mod.escape(str(e))}",
-            attachments=MENU_KB(),
-        )
-        return
+        msgs = None
+        pull_block = f"🔎 <b>История (get_messages): ❌</b> {html_mod.escape(str(e))}"
+    else:
+        if msgs.messages:
+            # API returns newest-first; pick the newest by timestamp to be safe.
+            m = max(msgs.messages, key=lambda x: x.timestamp)
+            sender = m.sender.full_name if m.sender else "—"
+            body = html_mod.escape(
+                ((m.body.text if m.body else None) or "<вложение>")[:500]
+            )
+            when = "?"
+            try:
+                when = (
+                    datetime.fromtimestamp(m.timestamp / 1000, tz=timezone.utc)
+                    .astimezone(ZoneInfo(settings.timezone))
+                    .strftime("%d.%m %H:%M")
+                )
+            except Exception:
+                pass
+            pull_block = (
+                f"🔎 <b>История (get_messages): {len(msgs.messages)}</b>\n"
+                f"🕐 {when} · <b>{html_mod.escape(sender)}</b>\n{body}"
+            )
+        else:
+            pull_block = "🔎 <b>История (get_messages): 0</b> — пусто"
 
-    if not msgs.messages:
-        await event.message.answer(
-            f"{header}\n\n📭 Сообщений пока нет.", attachments=MENU_KB(),
+    hint = ""
+    if not buffered and (msgs is None or not msgs.messages):
+        hint = (
+            "\n\n⚠️ Бот не видит сообщения группы. Сделай его "
+            "<b>администратором</b> группы (с правом читать сообщения), затем "
+            "напиши что-нибудь в группу и нажми «🧪 Тест» снова."
         )
-        return
-
-    # The API's message order isn't guaranteed — pick the newest by timestamp.
-    m = max(msgs.messages, key=lambda x: x.timestamp)
-    sender = m.sender.full_name if m.sender else "—"
-    text = (m.body.text if m.body else None) or "<вложение / без текста>"
-    if len(text) > 1500:
-        text = text[:1500] + "…"
-
-    when = ""
-    try:
-        tz = ZoneInfo(settings.timezone)
-        when = (
-            datetime.fromtimestamp(m.timestamp / 1000, tz=timezone.utc)
-            .astimezone(tz)
-            .strftime("%d.%m %H:%M")
-        )
-    except Exception:
-        pass
 
     await event.message.answer(
-        f"{header}\n\n🕐 {when} · <b>{html_mod.escape(sender)}</b>\n\n"
-        f"{html_mod.escape(text)}",
+        f"{header}\n\n{push_block}\n\n{pull_block}{hint}",
         attachments=MENU_KB(),
     )
 

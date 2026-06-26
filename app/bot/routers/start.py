@@ -1,6 +1,6 @@
 import html as html_mod
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 from maxapi import F, Router
 from maxapi.context import MemoryContext
@@ -20,11 +20,6 @@ from app.version import __version__
 
 logger = logging.getLogger("arkadyjarvismax")
 router = Router()
-
-# MAX rejects a message with no text (proto.payload / errors.required), even
-# when an inline keyboard attachment is present. So the "no text" UI still
-# needs a minimal non-empty body — keep it to a single marker.
-MENU_TEXT = "🧪"
 
 
 def menu_kb():
@@ -72,18 +67,8 @@ def back_menu_kb():
     return b.as_markup()
 
 
-def test_kb():
-    """Temporary test-mode keyboard — a single button that prints the bot's
-    group chats and the last message in the test group."""
-    b = InlineKeyboardBuilder()
-    b.row(CallbackButton(text="🧪 Тест", payload="test:lastmsg"))
-    return b.as_markup()
-
-
 def MENU_KB():
-    # Menu temporarily hidden for testing. To restore the full menu,
-    # return [menu_kb()] here instead of [test_kb()].
-    return [test_kb()]
+    return [menu_kb()]
 
 
 def BACK_MENU_KB():
@@ -140,7 +125,11 @@ async def cmd_start(event: MessageCreated, bitrix):
 
     existing = await db.get_user(user_id)
     if existing and existing.get("bitrix_user_id"):
-        await msg.answer(MENU_TEXT, attachments=MENU_KB())
+        await msg.answer(
+            f"✅ Ты авторизован как <b>{html_mod.escape(existing['display_name'] or '')}</b>.\n\n"
+            "Выбери команду — покажу подсказку:",
+            attachments=MENU_KB(),
+        )
         return
 
     # In MAX, user.username is optional (unlike Telegram where it's a unique
@@ -191,136 +180,21 @@ async def cmd_start(event: MessageCreated, bitrix):
         "User authorized: max=%s → bitrix=%s (%s)",
         user_id, bitrix_id, full_name,
     )
-    await msg.answer(MENU_TEXT, attachments=MENU_KB())
+    await msg.answer(
+        f"✅ Ты авторизован как <b>{html_mod.escape(full_name or '')}</b>\n\n"
+        "Выбери команду — покажу подсказку:",
+        attachments=MENU_KB(),
+    )
 
 
 @router.message_created(Command("help"))
 async def cmd_help(event: MessageCreated):
-    await event.message.answer(MENU_TEXT, attachments=MENU_KB())
+    await event.message.answer(HELP_TEXT, attachments=MENU_KB())
 
 
 @router.message_callback(F.callback.payload == "noop")
 async def handle_noop(event: MessageCallback):
     await event.answer()
-
-
-@router.message_callback(F.callback.payload == "test:lastmsg")
-async def handle_test_lastmsg(event: MessageCallback, bot):
-    """Diagnostic test button. Finds the bot's group chats (so we learn their
-    chat_id) and reports, for the test group, BOTH ways the bot can read it:
-      • PUSH — message_created events captured live into message_buffer (this is
-        what summarization uses);
-      • PULL — bot.get_messages() history fetch.
-    Both require the bot to actually have access to the group's messages, which
-    in MAX means it must be a group administrator."""
-    from zoneinfo import ZoneInfo
-    from maxapi.enums.chat_type import ChatType
-
-    await event.answer()
-
-    try:
-        chats = await bot.get_chats(count=100)
-    except Exception as e:
-        logger.error("test:lastmsg get_chats failed: %s", e, exc_info=True)
-        await event.message.answer(
-            f"❌ Не смог получить список чатов: {html_mod.escape(str(e))}",
-            attachments=MENU_KB(),
-        )
-        return
-
-    group_chats = [c for c in chats.chats if c.type == ChatType.CHAT]
-    if not group_chats:
-        await event.message.answer(
-            "🤷 Бот пока не состоит ни в одной группе. "
-            "Добавь его в группу и попробуй снова.",
-            attachments=MENU_KB(),
-        )
-        return
-
-    # Prefer the "Контроль КП…" group by title; if the bot is in exactly one
-    # group, use that one regardless of its title.
-    target = next(
-        (c for c in group_chats if c.title and "контроль" in c.title.lower()),
-        None,
-    )
-    if target is None and len(group_chats) == 1:
-        target = group_chats[0]
-
-    if target is None:
-        lines = ["🔎 Не нашёл группу «Контроль КП…». Бот состоит в этих группах:", ""]
-        for c in group_chats:
-            lines.append(
-                f"• <b>{html_mod.escape(c.title or '—')}</b>\n"
-                f"  id <code>{c.chat_id}</code> · 👥 {c.participants_count}"
-            )
-        await event.message.answer("\n".join(lines), attachments=MENU_KB())
-        return
-
-    header = (
-        f"📍 <b>{html_mod.escape(target.title or '—')}</b>\n"
-        f"chat_id: <code>{target.chat_id}</code> · 👥 {target.participants_count}\n"
-        "━━━━━━━━━━━━━━"
-    )
-
-    # PUSH channel — what the bot actually captured live into the buffer.
-    buffered = await db.get_buffered_messages(target.chat_id)
-    if buffered:
-        last = buffered[-1]
-        body = html_mod.escape((last.get("text") or "")[:500])
-        push_block = (
-            f"📥 <b>Live-перехват (push): {len(buffered)}</b>\n"
-            f"🕐 {(last.get('sent_at') or '')[:16]} · "
-            f"<b>{html_mod.escape(last.get('sender_name') or '—')}</b>\n{body}"
-        )
-    else:
-        push_block = (
-            "📥 <b>Live-перехват (push): 0</b> — "
-            "бот не получил ни одного сообщения группы"
-        )
-
-    # PULL channel — history fetch via the API.
-    try:
-        msgs = await bot.get_messages(chat_id=target.chat_id, count=10)
-    except Exception as e:
-        logger.error("test:lastmsg get_messages failed: %s", e, exc_info=True)
-        msgs = None
-        pull_block = f"🔎 <b>История (get_messages): ❌</b> {html_mod.escape(str(e))}"
-    else:
-        if msgs.messages:
-            # API returns newest-first; pick the newest by timestamp to be safe.
-            m = max(msgs.messages, key=lambda x: x.timestamp)
-            sender = m.sender.full_name if m.sender else "—"
-            body = html_mod.escape(
-                ((m.body.text if m.body else None) or "<вложение>")[:500]
-            )
-            when = "?"
-            try:
-                when = (
-                    datetime.fromtimestamp(m.timestamp / 1000, tz=timezone.utc)
-                    .astimezone(ZoneInfo(settings.timezone))
-                    .strftime("%d.%m %H:%M")
-                )
-            except Exception:
-                pass
-            pull_block = (
-                f"🔎 <b>История (get_messages): {len(msgs.messages)}</b>\n"
-                f"🕐 {when} · <b>{html_mod.escape(sender)}</b>\n{body}"
-            )
-        else:
-            pull_block = "🔎 <b>История (get_messages): 0</b> — пусто"
-
-    hint = ""
-    if not buffered and (msgs is None or not msgs.messages):
-        hint = (
-            "\n\n⚠️ Бот не видит сообщения группы. Сделай его "
-            "<b>администратором</b> группы (с правом читать сообщения), затем "
-            "напиши что-нибудь в группу и нажми «🧪 Тест» снова."
-        )
-
-    await event.message.answer(
-        f"{header}\n\n{push_block}\n\n{pull_block}{hint}",
-        attachments=MENU_KB(),
-    )
 
 
 @router.message_callback(F.callback.payload.startswith("work:"))
@@ -706,5 +580,8 @@ async def _show_meetings(event: MessageCallback, bitrix):
 @router.message_callback(F.callback.payload == "back:menu")
 async def handle_back_menu(event: MessageCallback, context: MemoryContext):
     await context.clear()
-    await event.message.answer(MENU_TEXT, attachments=MENU_KB())
+    await event.message.answer(
+        "Выбери команду — покажу подсказку:",
+        attachments=MENU_KB(),
+    )
     await event.answer()
